@@ -1,0 +1,25 @@
+.program mux_adc
+
+.wrap_target
+    pull block          ; Espera el token del Timer ISR para iniciar la ráfaga de 14 canales
+    set x, 13           ; Inicializa el contador para 14 iteraciones (conteo regresivo de 13 a 0)
+
+channel_loop:
+    ; [RESOLUCIÓN ANATOMÍA]: X va de 13 a 0. Al aplicar el operador NOT (~x), el PIO invierte los 
+    ; bits de forma instantánea. Para la máscara de 4 pines configurada en C, esto genera un barrido 
+    ; físico exacto en el multiplexor desde el canal C2 hasta el C15. Esto coincide al 100% con el
+    ; orden físico de cables sin necesidad de modificar el hardware del guante.
+    mov pins, ~x        
+                        
+    ; [OPTIMIZACIÓN DE TIMING]: Dado que configuramos el reloj del PIO a exactamente 1 MHz (1 ciclo = 1 us),
+    ; la instrucción NOP con un retraso integrado de [14] consume exactamente 15 ciclos (1 del NOP + 14 de espera).
+    ; Esto proporciona los 15 us perfectos para estabilizar la capacitancia del multiplexor sin usar bucles.
+    nop [14]            
+
+    ; [RESOLUCIÓN PROBLEMA 10]: Enviamos el comando de control (Valor 5 = EN y START_ONCE)
+    set y, 5            
+    mov isr, y          
+    push noblock        ; Levanta DREQ_PIO0_RX0 para el DMA de disparo a través de la FIFO de recepción
+
+    jmp x-- channel_loop ; Avanza barriendo de forma segura los 14 sensores analógicos
+.wrap
